@@ -531,7 +531,7 @@ footer {
         </div>
         <div style="display:flex;gap:12px;align-items:flex-start">
           <span style="font-size:18px;flex-shrink:0">2️⃣</span>
-          <span style="font-size:13px;color:var(--muted)"><strong style="color:var(--text)">Préds les scores</strong> — avant chaque match, entre le score que tu anticipes pour chaque équipe.</span>
+          <span style="font-size:13px;color:var(--muted)"><strong style="color:var(--text)">Prédis les scores</strong> — avant chaque match, entre le score que tu anticipes pour chaque équipe. <strong style="color:var(--red)">Important :</strong> entre toujours un chiffre dans les deux cases, même si c'est 0 — une case vide ne compte pas comme une prédiction !</span>
         </div>
         <div style="display:flex;gap:12px;align-items:flex-start">
           <span style="font-size:18px;flex-shrink:0">3️⃣</span>
@@ -539,6 +539,10 @@ footer {
         </div>
         <div style="display:flex;gap:12px;align-items:flex-start">
           <span style="font-size:18px;flex-shrink:0">🏆</span>
+          <span style="font-size:13px;color:var(--muted)"><strong style="color:var(--text)">Préds le champion</strong> — avant la fin de la phase de groupes (27 juin), choisis l'équipe qui va gagner la Coupe du Monde. <span style="color:var(--gold);font-weight:600">+5 pts bonus</span> si tu as raison — impossible de changer après le 27 juin !</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <span style="font-size:18px;flex-shrink:0">🎖️</span>
           <span style="font-size:13px;color:var(--muted)"><strong style="color:var(--text)">Remporte le titre</strong> — celui ou celle avec le plus de points à la fin du tournoi gagne la gloire éternelle de la DRI !</span>
         </div>
       </div>
@@ -615,11 +619,24 @@ function calcPts(ps1, ps2, rs1, rs2) {
   return pw===rw ? 1 : 0;
 }
 function getTotal(pid) {
-  return Object.values(DATA.matches).reduce((s,m) => {
+  const matchPts = Object.values(DATA.matches).reduce((s,m) => {
     const pred = (DATA.predictions||{})[`${pid}_${m.id}`];
     if(!pred || !m.result) return s;
     return s + (calcPts(pred.s1,pred.s2,m.result.s1,m.result.s2)||0);
   }, 0);
+  // +5 pts bonus si champion correct
+  const champPick = (DATA.champions||{})[pid];
+  const champResult = DATA.championResult || null;
+  const champBonus = (champPick && champResult && champPick.toLowerCase()===champResult.toLowerCase()) ? 5 : 0;
+  return matchPts + champBonus;
+}
+function getMyPredCount(pid) {
+  const total = Object.values(DATA.matches).length;
+  const done = Object.values(DATA.matches).filter(m => {
+    const pred = (DATA.predictions||{})[`${pid}_${m.id}`];
+    return pred && pred.s1 !== "" && pred.s2 !== "";
+  }).length;
+  return {done, total};
 }
 function notify(msg, type="info") {
   const z = document.getElementById("notif-zone");
@@ -649,6 +666,14 @@ function initListeners() {
   });
   onValue(ref(db,"predictions"), snap => {
     DATA.predictions = snap.val() || {};
+    refreshUI();
+  });
+  onValue(ref(db,"champions"), snap => {
+    DATA.champions = snap.val() || {};
+    refreshUI();
+  });
+  onValue(ref(db,"championResult"), snap => {
+    DATA.championResult = snap.val() || null;
     refreshUI();
   });
   document.getElementById("sync-label").textContent =
@@ -684,6 +709,29 @@ function renderJoinZone() {
   if(ME) {
     const p = participants.find(x=>x.id===ME);
     if(!p) { ME=null; renderJoinZone(); return; }
+    const {done, total} = getMyPredCount(ME);
+    const pct = total ? Math.round(done/total*100) : 0;
+    const champPick = (DATA.champions||{})[ME];
+    const champLocked = Date.now() > CHAMPION_DEADLINE || (DATA.championResult !== null && DATA.championResult !== undefined);
+    const champDeadlinePassed = Date.now() > CHAMPION_DEADLINE;
+    const champBonus = champPick && DATA.championResult && champPick.toLowerCase()===DATA.championResult.toLowerCase();
+    const champHtml = `<div style="background:var(--card);border:1px solid ${champBonus?'rgba(0,196,106,.4)':'var(--border)'};border-radius:12px;padding:14px 18px;margin-top:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">🏆 Prédiction du champion — +5 pts bonus</div>
+      ${!champLocked?`<div style="font-size:11px;color:var(--muted);margin-bottom:10px">⏰ Ferme le <strong style="color:var(--text)">27 juin à 23h59</strong> — fin de la phase de groupes</div>`:``}
+      ${champPick
+        ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:14px;color:var(--text)">Tu as choisi : <strong>${champPick}</strong></span>
+            ${champBonus ? '<span style="font-size:12px;padding:2px 8px;border-radius:4px;background:rgba(0,196,106,.15);color:var(--green)">+5 pts ✓</span>' : ''}
+            ${!champLocked ? `<button onclick="clearChampion()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--muted);margin-left:auto">Changer</button>` : ''}
+          </div>`
+        : champLocked
+          ? '<span style="font-size:13px;color:var(--muted)">Tu n'as pas fait de prédiction pour le champion.</span>'
+          : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="champ-inp" placeholder="Ex: 🇫🇷 France" style="flex:1;min-width:140px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:0 12px;height:36px;color:var(--text);font-family:var(--font-body);font-size:14px;outline:none" onkeydown="if(event.key==='Enter')saveChampion()"/>
+              <button class="btn-join" onclick="saveChampion()" style="height:36px;padding:0 14px;font-size:13px">Confirmer</button>
+            </div>`
+      }
+    </div>`;
     z.innerHTML = `<div class="container" style="padding-top:16px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="user-pill">
@@ -693,6 +741,17 @@ function renderJoinZone() {
         ${isAdmin?`<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(245,200,66,.15);color:#F5C842">Admin</span>`:""}
         <button class="btn-ghost" onclick="logout()" style="margin-left:auto">Changer de joueur</button>
       </div>
+      <div style="margin-top:12px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:13px;color:var(--muted)">Tes prédictions</span>
+          <span style="font-size:13px;font-weight:600;color:${pct===100?'var(--green)':'var(--text)'}">${done}/${total} matchs</span>
+        </div>
+        <div style="height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':'var(--gold)'};border-radius:3px;transition:width .4s"></div>
+        </div>
+        ${pct<100?`<div style="font-size:12px;color:var(--muted);margin-top:6px">⚡ Il te reste <strong style="color:var(--text)">${total-done} match${total-done>1?'s':''}</strong> à prédire avant le coup d'envoi !</div>`:`<div style="font-size:12px;color:var(--green);margin-top:6px">✓ Toutes tes prédictions sont complètes !</div>`}
+      </div>
+      ${champHtml}
     </div>`;
   } else {
     z.innerHTML = `<div class="container" style="padding-top:16px">
@@ -712,6 +771,40 @@ function renderJoinZone() {
   }
 }
 window.logout = () => { ME=null; renderJoinZone(); renderMatchs(); renderClassement(); };
+
+const CHAMPION_DEADLINE = new Date("2026-06-28T03:59:00Z").getTime(); // 27 juin 23h59 ET
+
+window.saveChampion = async () => {
+  if(!ME) return;
+  if(Date.now() > CHAMPION_DEADLINE) {
+    notify("🔒 La prédiction du champion est fermée depuis le 27 juin !", "warn");
+    return;
+  }
+  const inp = document.getElementById("champ-inp");
+  if(!inp) return;
+  const val = inp.value.trim();
+  if(!val) return;
+  await set(ref(db, `champions/${ME}`), val);
+  notify(`Champion choisi : ${val} — +5 pts si correct ! 🏆`, "success");
+};
+
+window.clearChampion = async () => {
+  if(!ME) return;
+  if(Date.now() > CHAMPION_DEADLINE) {
+    notify("🔒 La prédiction du champion est fermée depuis le 27 juin !", "warn");
+    return;
+  }
+  const { remove: rem } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
+  await rem(ref(db, `champions/${ME}`));
+};
+
+window.saveChampionResult = async () => {
+  if(!isAdmin) return;
+  const val = document.getElementById("champ-result-inp").value.trim();
+  if(!val) return;
+  await set(ref(db, "championResult"), val);
+  notify(`Champion officiel : ${val} — +5 pts distribués !`, "success");
+};
 
 window.joinPool = async () => {
   const name = document.getElementById("inp-join").value.trim();
@@ -958,7 +1051,9 @@ function renderClassement() {
       const pred = (DATA.predictions||{})[`${p.id}_${m.id}`];
       return pred && m.result && calcPts(pred.s1,pred.s2,m.result.s1,m.result.s2)===1;
     }).length;
-    return {...p, total, exact, res};
+    const champPick = (DATA.champions||{})[p.id] || null;
+    const champBonus = champPick && DATA.championResult && champPick.toLowerCase()===DATA.championResult.toLowerCase();
+    return {...p, total, exact, res, champPick, champBonus};
   }).sort((a,b)=>b.total-a.total);
 
   const maxPts = Math.max(...ranked.map(r=>r.total), 1);
@@ -984,6 +1079,7 @@ function renderClassement() {
         <div class="stand-detail">
           <span style="color:var(--green)">${p.exact} exact</span>
           <span style="color:var(--blue)">${p.res} résultat</span>
+          ${p.champBonus?`<span style="color:#F5C842">+5 🏆</span>`:(p.champPick?`<span>🏆 ${p.champPick}</span>`:``)}
         </div>
         <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(p.total/maxPts*100)}%"></div></div>
       </div>
@@ -1058,6 +1154,21 @@ function renderAdmin() {
         toutes les 2 minutes. La clé API gratuite est configurée dans la fonction Vercel/Firebase.
       </p>
       <button class="btn-prim" onclick="triggerSync()" id="btn-sync">🔄 Forcer une synchro maintenant</button>
+    </div>
+
+    <div class="admin-card">
+      <h3>🏆 Champion officiel (résultat final)</h3>
+      ${DATA.championResult
+        ? `<div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:14px;color:var(--text)">Champion : <strong style="color:var(--green)">${DATA.championResult}</strong></span>
+            <span style="font-size:12px;color:var(--muted)">+5 pts distribués aux bons pronostiqueurs</span>
+          </div>`
+        : `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">À saisir après la finale du 19 juillet.</div>
+           <div style="display:flex;gap:8px">
+             <input class="inp" id="champ-result-inp" placeholder="Ex: 🇫🇷 France"/>
+             <button class="btn-prim" onclick="saveChampionResult()">Confirmer</button>
+           </div>`
+      }
     </div>
 
     <div class="admin-card">
