@@ -903,10 +903,33 @@ function renderMatchCard(m) {
 
 window.savePred = async (mid, field, val) => {
   if(!ME) { notify("Rejoins le pool d'abord !", "warn"); return; }
+  const kickoffTs = (DATA.matches[mid]||{}).kickoff || (DATA.matches[mid]||{}).date || 0;
+  if(Date.now() >= kickoffTs) { notify("🔒 Prédictions fermées pour ce match !", "warn"); return; }
   const key = `${ME}_${mid}`;
   const cur = (DATA.predictions||{})[key] || {s1:"",s2:""};
   cur[field] = val;
   await set(ref(db, `predictions/${key}`), cur);
+  // Confirmation visuelle sur la carte du match
+  const inputs = document.querySelectorAll(`input[onchange*="${mid}"]`);
+  inputs.forEach(inp => {
+    inp.style.borderColor = "#00C46A";
+    setTimeout(() => inp.style.borderColor = "", 2000);
+  });
+  // Petit badge "✓ Sauvegardé"
+  const predRow = inputs[0]?.closest(".my-pred");
+  if(predRow) {
+    let badge = predRow.querySelector(".save-badge");
+    if(!badge) {
+      badge = document.createElement("span");
+      badge.className = "save-badge";
+      badge.style.cssText = "font-size:11px;color:#00C46A;margin-left:4px;transition:opacity .3s";
+      predRow.querySelector("label").after(badge);
+    }
+    badge.textContent = "✓ Sauvegardé";
+    badge.style.opacity = "1";
+    clearTimeout(badge._t);
+    badge._t = setTimeout(() => badge.style.opacity = "0", 2000);
+  }
 };
 
 window.saveResult = async (mid, field, val) => {
