@@ -791,6 +791,9 @@ function renderMatchCard(m) {
   const t1parts = m.team1.split(" "), t2parts = m.team2.split(" ");
   const f1=t1parts[0], n1=t1parts.slice(1).join(" ");
   const f2=t2parts[0], n2=t2parts.slice(1).join(" ");
+  const kickoffTs = m.kickoff || m.date || 0;
+  const dateStr = kickoffTs ? new Date(kickoffTs).toLocaleDateString("fr-CA",{weekday:"short",day:"numeric",month:"short",timeZone:"America/Montreal"}) : "";
+  const timeStr = kickoffTs ? new Date(kickoffTs).toLocaleTimeString("fr-CA",{hour:"2-digit",minute:"2-digit",timeZone:"America/Montreal"}) : "";
 
   // Score center
   let scoreHtml;
@@ -807,7 +810,9 @@ function renderMatchCard(m) {
     scoreHtml = `<div class="score-center"><div class="vs-text">VS</div></div>`;
   }
 
-  // My prediction row
+  // My prediction row — bloqué à l'heure du coup d'envoi
+  const kickoff = m.kickoff || m.date || 0;
+  const isLocked = Date.now() >= kickoff;
   let myPredHtml = "";
   if(ME) {
     const pred = (DATA.predictions||{})[`${ME}_${m.id}`] || {s1:"",s2:""};
@@ -818,16 +823,18 @@ function renderMatchCard(m) {
       else if(pts===1) ptsBadge = `<span class="pts-chip pc-result">+1 pt</span>`;
       else ptsBadge = `<span class="pts-chip pc-wrong">0 pt</span>`;
     }
+    const lockBadge = isLocked && !m.result ? `<span class="pts-chip pc-wrong" style="font-size:11px">🔒 Prédictions fermées</span>` : "";
+    const disabled = (m.result || isLocked) ? "disabled" : "";
     myPredHtml = `<div class="my-pred">
       <label>Ma prédiction</label>
-      ${ptsBadge}
+      ${ptsBadge}${lockBadge}
       <div class="score-inp">
         <input type="number" min="0" max="20" value="${pred.s1}" placeholder="0"
-          ${m.result?"disabled":""}
+          ${disabled}
           onchange="savePred('${m.id}','s1',this.value)"/>
         <span class="score-sep">–</span>
         <input type="number" min="0" max="20" value="${pred.s2}" placeholder="0"
-          ${m.result?"disabled":""}
+          ${disabled}
           onchange="savePred('${m.id}','s2',this.value)"/>
       </div>
     </div>`;
@@ -881,7 +888,7 @@ function renderMatchCard(m) {
   return `<div class="match-card${m.live?" live":""}">
     <div class="match-top">
       <span class="phase-badge">${m.group||"Match"}</span>
-      <span class="match-meta">${m.date?fmt(m.date):""}</span>
+      <span class="match-meta">${dateStr}${timeStr?" · "+timeStr+" ET":""}</span>
     </div>
     <div class="teams-row">
       <div class="team"><span class="flag">${f1}</span><div class="team-name">${n1}</div></div>
